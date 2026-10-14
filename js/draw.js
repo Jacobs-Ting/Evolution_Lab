@@ -244,7 +244,190 @@ function drawTetrapod(ctx, g, r, ph, P, detail) {
   } else if (legless) { ctx.fillStyle = 'rgba(0,0,0,.35)'; for (const side of [-1, 1]) { ctx.beginPath(); ctx.arc(hd.x - r * .1, hd.y + side * r * .16, Math.max(.5, r * .05), 0, TAU); ctx.fill(); } }
   if (big && detail) { ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = Math.max(.6, r * .05); ctx.beginPath(); ctx.moveTo(pts[0].x - r * .05, pts[0].y); ctx.lineTo(hd.x - r * .5, hd.y); ctx.stroke(); }
 }
+
+/* ---------- reptiles & birds ---------- */
+function wfFrom(cp, sc) {
+  return t => {
+    let i = 0; while (i < cp.length - 2 && t > cp[i + 1][0]) i++;
+    const [t0, w0] = cp[i], [t1, w1] = cp[i + 1], u = Math.max(0, Math.min(1, (t - t0) / (t1 - t0 || 1)));
+    return sc * (w0 + (w1 - w0) * (1 - Math.cos(u * Math.PI)) / 2);
+  };
+}
+function scaleSkin(ctx, pts, wf, r, col, detail) {
+  if (!detail && r < 5) return;
+  ctx.fillStyle = col;
+  for (let i = 1; i < pts.length - 1; i++) { const p = pts[i], w = wf(p.t);
+    for (let k = -2; k <= 2; k++) { if (Math.abs(k) * .3 > .9) continue; ctx.beginPath(); ctx.arc(p.x + (i % 2 ? r * .08 : 0), p.y + k * w * .32, Math.max(.4, w * .09), 0, TAU); ctx.fill(); } }
+}
+function reptileLegs(ctx, pts, wf, r, ph, col, edge, spec) {
+  for (const [t, len, phase, splay, toeL] of spec) for (const side of [-1, 1]) {
+    const q = at(pts, t), w = wf(t), sw = Math.sin(ph * 2 + phase + (side > 0 ? Math.PI : 0));
+    const bx = q.x, by = q.y + side * w * .75;
+    const kx = bx + len * (.35 * sw), ky = by + side * len * splay;
+    const fx = kx + len * (.3 + .25 * sw) * (t > .5 ? -1 : 1), fy = ky + side * len * .25;
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, len * .38); ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+    ctx.strokeStyle = edge; ctx.lineWidth = Math.max(.5, r * .05);
+    for (let k = 0; k < 3; k++) { const a = (t > .5 ? Math.PI : 0) + side * (-.4 + k * .4); ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(a) * toeL, fy + Math.sin(a) * toeL); ctx.stroke(); }
+  }
+}
+function headEyes(ctx, q, w, r, g, side2) {
+  if (g.eyeN === 0) return;
+  const er = Math.max(.8, r * (.09 + g.eyeSize * .08));
+  for (const side of [-1, 1]) { const ex = q.x, ey = q.y + side * w * (side2 || .6);
+    ctx.fillStyle = '#e8d66a'; ctx.beginPath(); ctx.arc(ex, ey, er, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.ellipse(ex, ey, er * .3, er * .8, 0, 0, TAU); ctx.fill(); }
+}
+function drawTurtle(ctx, g, r, ph, P, detail, flipper) {
+  const big = g.size > .5, L = r * 2.2, sw = r * 1.05, edge = P.edge;
+  const paddle = Math.sin(ph * (flipper ? 1.6 : 2.2));
+  ctx.fillStyle = `hsla(${P.hue},30%,40%,1)`;
+  for (const [x, side, ln, ph2] of [[L * .28, -1, 1, 0], [L * .28, 1, 1, Math.PI], [-L * .3, -1, .7, Math.PI], [-L * .3, 1, .7, 0]]) {
+    const a = side * (flipper ? 1.1 + paddle * .45 * (ph2 ? -1 : 1) : 1.2 + paddle * .25 * (ph2 ? -1 : 1));
+    ctx.save(); ctx.translate(x, side * sw * .55); ctx.rotate(a);
+    ctx.beginPath(); ctx.ellipse(r * (flipper ? .55 : .3) * ln, 0, r * (flipper ? .65 : .32) * ln, r * (flipper ? .2 : .18), 0, 0, TAU); ctx.fill(); ctx.restore();
+  }
+  ctx.beginPath(); ctx.ellipse(L * .62, 0, r * .32, r * .26, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-L * .48, -r * .1); ctx.lineTo(-L * .7, 0); ctx.lineTo(-L * .48, r * .1); ctx.fill();
+  headEyes(ctx, { x: L * .7, y: 0 }, r * .26, r, g, .55);
+  ctx.fillStyle = P.fill; ctx.beginPath(); ctx.ellipse(0, 0, L * .5, sw * .62, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = edge; ctx.lineWidth = Math.max(.8, r * .08); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = Math.max(.5, r * .05);
+  const hx = L * .17, hy = sw * .2;
+  for (let i = -1; i <= 1; i++) { ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k / 6 * TAU; const x = i * hx * 1.9 + Math.cos(a) * hx, y = Math.sin(a) * hy * 1.4; k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); ctx.stroke(); }
+  for (const side of [-1, 1]) for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.ellipse(i * hx * 1.9, side * sw * .43, hx * .9, sw * .14, 0, 0, TAU); ctx.stroke(); }
+  if (g.spikes > .35) { ctx.fillStyle = edge; for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.arc(i * hx, 0, r * .08, 0, TAU); ctx.fill(); } }
+}
+function drawSnake(ctx, g, r, ph, P, detail, sea) {
+  const L = r * (4.6 + g.segs * .25), pts = vSpine(22, L, r * .75, ph * 1.2, 9, false);
+  const wf = t => r * .3 * (t < .05 ? .7 + 6 * t : t > .8 ? Math.max(.08, 1 - (t - .8) * 4.5) : 1) * (sea && t > .9 ? 1.6 : 1);
+  outline(ctx, pts, wf); ctx.fillStyle = P.fill; ctx.fill();
+  ctx.save(); outline(ctx, pts, wf); ctx.clip();
+  ctx.fillStyle = P.fill2; for (let i = 1; i < 21; i += 2) { const p = pts[i]; ctx.beginPath(); ctx.ellipse(p.x, p.y, L / 44, wf(p.t) * 1.1, 0, 0, TAU); ctx.fill(); }
+  scaleSkin(ctx, pts, wf, r, 'rgba(0,0,0,.18)', detail);
+  ctx.restore();
+  outline(ctx, pts, wf); ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.6, r * .05); ctx.stroke();
+  const h = pts[0];
+  ctx.fillStyle = P.fill; ctx.beginPath(); ctx.ellipse(h.x - r * .1, h.y, r * .42, r * .34, 0, 0, TAU); ctx.fill(); ctx.stroke();
+  headEyes(ctx, { x: h.x - r * .05, y: h.y }, r * .3, r, g, .75);
+  if (Math.sin(ph * 3) > .2) { ctx.strokeStyle = '#d2334a'; ctx.lineWidth = Math.max(.5, r * .05); ctx.beginPath(); ctx.moveTo(h.x + r * .28, h.y); ctx.lineTo(h.x + r * .6, h.y); ctx.lineTo(h.x + r * .75, h.y - r * .1); ctx.moveTo(h.x + r * .6, h.y); ctx.lineTo(h.x + r * .75, h.y + r * .1); ctx.stroke(); }
+}
+function drawLandReptile(ctx, g, r, ph, P, detail) {
+  if (g.limbs < 2) return drawSnake(ctx, g, r, ph, P, detail, false);
+  if (g.armor > .5 && g.size <= .5) return drawTurtle(ctx, g, r, ph, P, detail, false);
+  const giant = g.size > .5, pred = g.d > .78, sauro = giant && !pred, ankylo = giant && g.armor > .5;
+  const L = r * (sauro ? 4.4 : giant ? 3.6 : 3);
+  const cp = sauro ? [[0, .22], [.035, .28], [.06, .15], [.3, .2], [.38, .78], [.6, .82], [.67, .45], [1, .04]]
+    : pred && giant ? [[0, .32], [.08, .52], [.14, .44], [.19, .32], [.26, .58], [.45, .6], [.52, .4], [1, .04]]
+    : ankylo ? [[0, .3], [.06, .38], [.12, .5], [.22, .8], [.5, .85], [.58, .45], [.95, .1], [1, .2]]
+    : [[0, .22], [.06, .38], [.11, .34], [.15, .28], [.22, .48], [.44, .52], [.52, .36], [1, .03]];
+  const wf = wfFrom(cp, r);
+  const pts = vSpine(18, L, r * (giant ? .18 : .32), ph * (giant ? .6 : 1.1), 3.4, true);
+  const legCol = `hsla(${P.hue},35%,${Math.max(20, 42 - g.armor * 12)}%,1)`;
+  const tr = cp.find(c => c[1] >= .45) || cp[3], t0 = tr[0] + .02, t1 = sauro ? .58 : pred && giant ? .43 : .44;
+  if (pred && giant) reptileLegs(ctx, pts, wf, r, ph, legCol, P.edge, [[t1, r * .95, 0, .55, r * .35], [t0 + .02, r * .25, 1, .7, r * .12]]);
+  else reptileLegs(ctx, pts, wf, r, ph, legCol, P.edge, [[t0, r * (giant ? .7 : .6), 0, giant ? .45 : .8, r * .2], [t1, r * (giant ? .75 : .65), Math.PI, giant ? .45 : .8, r * .22]]);
+  outline(ctx, pts, wf); ctx.fillStyle = P.fill; ctx.fill();
+  ctx.save(); outline(ctx, pts, wf); ctx.clip();
+  ctx.fillStyle = 'rgba(0,0,0,.14)'; ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y - wf(p.t) * .25) : ctx.moveTo(p.x, p.y - wf(p.t) * .25));
+  for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].y + wf(pts[i].t) * .25); ctx.fill();
+  if (!giant) { ctx.fillStyle = P.fill2; for (let i = 4; i < 16; i += 2) for (const side of [-1, 1]) { const p = pts[i]; ctx.fillRect(p.x - r * .08, p.y + side * wf(p.t) * .55 - r * .05, r * .16, r * .1); } }
+  scaleSkin(ctx, pts, wf, r, 'rgba(0,0,0,.16)', detail);
+  if (ankylo || g.armor > .4) { ctx.fillStyle = 'rgba(50,40,30,.45)'; for (let i = 3; i < 13; i++) for (const side of [-1, 0, 1]) { const p = pts[i]; ctx.beginPath(); ctx.arc(p.x, p.y + side * wf(p.t) * .5, Math.max(.6, wf(p.t) * .14), 0, TAU); ctx.fill(); } }
+  ctx.restore();
+  outline(ctx, pts, wf); ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.7, r * .07); ctx.stroke();
+  if (g.spikes > .35) { ctx.fillStyle = `hsl(${(P.hue + 25) % 360},55%,48%)`; ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.4, r * .04);
+    for (let i = 5; i < 15; i++) { const p = pts[i], s2 = i % 2 ? 1 : -1, hgt = r * (giant ? .45 : .25) * (1 - Math.abs(i - 9) / 9);
+      ctx.beginPath(); ctx.moveTo(p.x + r * .12, p.y); ctx.lineTo(p.x, p.y + s2 * hgt); ctx.lineTo(p.x - r * .12, p.y); ctx.closePath(); ctx.fill(); ctx.stroke(); } }
+  if (ankylo) { const q = pts[pts.length - 1]; ctx.fillStyle = P.edge; ctx.beginPath(); ctx.ellipse(q.x, q.y, r * .3, r * .24, 0, 0, TAU); ctx.fill(); }
+  const hq = at(pts, sauro ? .025 : .07);
+  headEyes(ctx, hq, wf(sauro ? .025 : .07), r, g, .5);
+  if (pred) { ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = Math.max(.5, r * .05); ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); ctx.lineTo(at(pts, .1).x, at(pts, .1).y); ctx.stroke(); }
+  if (Math.sin(ph * 2.5) > .6 && !giant) { const h = pts[0]; ctx.strokeStyle = '#d2334a'; ctx.lineWidth = Math.max(.5, r * .045); ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(h.x + r * .35, h.y); ctx.lineTo(h.x + r * .45, h.y - r * .08); ctx.moveTo(h.x + r * .35, h.y); ctx.lineTo(h.x + r * .45, h.y + r * .08); ctx.stroke(); }
+}
+function drawMarineReptile(ctx, g, r, ph, P, detail) {
+  if (g.armor > .45) return drawTurtle(ctx, g, r, ph, P, detail, true);
+  if (g.segs >= 7) return drawSnake(ctx, g, r, ph, P, detail, true);
+  const mosa = g.d > .78 && g.size > .45, plesio = !mosa && g.size > .35;
+  const L = r * (mosa ? 4 : plesio ? 4.4 : 3);
+  const cp = plesio ? [[0, .17], [.04, .22], [.07, .12], [.38, .2], [.47, .62], [.7, .64], [.8, .3], [1, .04]]
+    : mosa ? [[0, .2], [.12, .42], [.2, .45], [.45, .5], [.7, .32], [.92, .1], [1, .05]]
+    : [[0, .03], [.1, .14], [.18, .4], [.35, .58], [.6, .48], [.82, .14], [1, .08]];
+  const wf = wfFrom(cp, r);
+  const pts = vSpine(18, L, r * (plesio ? .12 : .3), ph, plesio ? 2.5 : 4, true);
+  const fl = `hsla(${(P.hue + 15) % 360},38%,${P.gel ? 60 : 30}%,.95)`;
+  const flip = (t, sz, phase) => { const q = at(pts, t), a = .7 + Math.sin(ph * 1.8 + phase) * .45;
+    ctx.save(); ctx.translate(q.x, q.y + wf(t) * .5); ctx.rotate(a); ctx.fillStyle = fl;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-sz * .3, sz * .3, -sz * 1.15, sz * .2); ctx.quadraticCurveTo(-sz * .4, -sz * .08, 0, 0); ctx.fill(); ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.5, r * .04); ctx.stroke(); ctx.restore(); };
+  if (plesio) { flip(.52, r * 1.1, 0); flip(.72, r * .95, 1.4); }
+  else if (mosa) { flip(.24, r * .6, 0); flip(.5, r * .5, 1); }
+  else { flip(.3, r * .8, 0); flip(.58, r * .45, 1); }
+  const tail = pts[pts.length - 1], pre = pts[pts.length - 3], ta = Math.atan2(tail.y - pre.y, tail.x - pre.x);
+  ctx.save(); ctx.translate(tail.x, tail.y); ctx.rotate(ta); ctx.fillStyle = fl; const cf = r * (mosa ? .7 : .85);
+  ctx.beginPath(); ctx.moveTo(-r * .1, 0);
+  if (mosa) { ctx.quadraticCurveTo(cf * .5, cf * .1, cf, cf * .8); ctx.quadraticCurveTo(cf * .5, -cf * .1, -r * .1, -cf * .15); }
+  else { ctx.quadraticCurveTo(cf * .5, -cf * .2, cf * .9, -cf); ctx.quadraticCurveTo(cf * .55, 0, cf * .9, cf); ctx.quadraticCurveTo(cf * .5, cf * .2, -r * .1, 0); }
+  ctx.fill(); ctx.restore();
+  if (!plesio && !mosa) { const a = at(pts, .36), b = at(pts, .5); ctx.fillStyle = fl; ctx.beginPath(); ctx.moveTo(a.x, a.y - wf(.36) * .9); ctx.lineTo(b.x - r * .2, b.y - wf(.5) - r * .55); ctx.lineTo(b.x, b.y - wf(.5) * .9); ctx.fill(); }
+  outline(ctx, pts, wf); ctx.fillStyle = P.fill; ctx.fill();
+  ctx.save(); outline(ctx, pts, wf); ctx.clip();
+  ctx.fillStyle = 'rgba(255,248,230,.25)'; ctx.fillRect(-L, pts[8].y + r * .05, L * 2, r * 2);
+  ctx.fillStyle = 'rgba(0,0,0,.15)'; ctx.fillRect(-L, -r * 3, L * 2, r * 2.75 + pts[8].y);
+  scaleSkin(ctx, pts, wf, r, 'rgba(0,0,0,.12)', detail);
+  ctx.restore();
+  outline(ctx, pts, wf); ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.7, r * .06); ctx.stroke();
+  if (plesio) { flip(.5, r * 1.1, 2); flip(.7, r * .95, 3.4); } else { flip(.28, r * .7, 2); }
+  const h = pts[0], hw = wf(.04);
+  ctx.strokeStyle = 'rgba(25,10,12,.8)'; ctx.lineWidth = Math.max(.5, r * .05);
+  const ml = mosa ? .14 : plesio ? .05 : .13, m = at(pts, ml);
+  ctx.beginPath(); ctx.moveTo(h.x, h.y + hw * .2); ctx.lineTo(m.x, m.y + wf(ml) * .15); ctx.stroke();
+  if (g.d > .72 && (detail || r > 6)) { ctx.fillStyle = '#f2ecdc'; for (let k = 1; k < 6; k++) { const q = at(pts, ml * k / 6); ctx.beginPath(); ctx.moveTo(q.x, q.y + wf(ml * k / 6) * .15); ctx.lineTo(q.x - r * .04, q.y + wf(ml * k / 6) * .15 + r * .09); ctx.lineTo(q.x - r * .08, q.y + wf(ml * k / 6) * .15); ctx.fill(); } }
+  if (g.eyeN > 0) { const q = at(pts, mosa ? .1 : plesio ? .03 : .12), er = Math.max(.9, r * (.08 + g.eyeSize * .12) * (plesio ? .7 : 1));
+    ctx.fillStyle = '#f4f0e2'; ctx.beginPath(); ctx.arc(q.x, q.y - wf(q.t || .1) * .35 - hw * .1, er, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.arc(q.x + er * .2, q.y - wf(q.t || .1) * .35 - hw * .1, er * .55, 0, TAU); ctx.fill(); }
+  if (g.glow > .25) for (let k = 0; k < 6; k++) { const q = at(pts, .3 + k * .08); glowDot(ctx, q.x, q.y + wf(.3 + k * .08) * .6, Math.max(1.3, r * .14), P.glow); }
+}
+function drawBird(ctx, g, r, ph, P, detail) {
+  const raptor = g.d > .78, big = g.size > .38;
+  const flap = Math.sin(ph * (raptor ? 1.4 : 3.2)), soar = raptor ? .35 : 1;
+  const span = r * (raptor ? 2.9 : 2.2) * (1 - .22 * soar * Math.abs(flap) * (flap < 0 ? 1 : .3));
+  const bodyL = r * 1.3, bw = r * .42;
+  if (!detail) { ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(-r * 1.2, r * 1.6, bodyL * .9, span * .55, 0, 0, TAU); ctx.fill(); }
+  const wingCol = P.fill2, tip = `hsla(${P.hue},40%,${Math.max(14, 30 - g.armor * 10)}%,1)`;
+  for (const side of [-1, 1]) {
+    const sx = r * .1, sy = side * bw * .6, ex = sx - r * (raptor ? .35 : .7), ey = side * span;
+    const chord = r * (raptor ? .75 : .5);
+    ctx.fillStyle = wingCol; ctx.beginPath(); ctx.moveTo(sx + r * .25, sy);
+    ctx.quadraticCurveTo(sx + r * .45, (sy + ey) * .5, ex + r * .2, ey);
+    ctx.lineTo(ex - chord * .6, ey - side * r * .05);
+    ctx.quadraticCurveTo(sx - chord * 1.1, (sy + ey) * .55, sx - r * .45, sy);
+    ctx.closePath(); ctx.fill(); ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.5, r * .045); ctx.stroke();
+    ctx.strokeStyle = tip; ctx.lineWidth = Math.max(.7, r * (raptor ? .12 : .09));
+    const nf = raptor ? 5 : 3;
+    for (let k = 0; k < nf; k++) { const u = .72 + k * (raptor ? .065 : .1), bx = sx + (ex - sx) * u, by = sy + (ey - sy) * u;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - chord * (raptor ? .9 : .7), by + side * r * (raptor ? .18 : .05) * (k - nf / 2) * .4); ctx.stroke(); }
+    if (detail) { ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = Math.max(.4, r * .03);
+      for (let k = 1; k < 7; k++) { const u = k / 8, bx = sx + (ex - sx) * u, by = sy + (ey - sy) * u; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - chord * .55, by + side * r * .03); ctx.stroke(); } }
+    if (g.glow > .3) glowDot(ctx, ex - chord * .3, ey, Math.max(1.4, r * .3 * g.glow), P.glow);
+  }
+  ctx.fillStyle = P.fill2;
+  const tl = r * (raptor ? .7 : big ? .55 : .85), tw = r * (raptor ? .55 : .35);
+  ctx.beginPath(); ctx.moveTo(-bodyL * .4, -bw * .4); ctx.lineTo(-bodyL * .4 - tl, -tw); ctx.lineTo(-bodyL * .4 - tl * (raptor ? 1 : .8), 0); ctx.lineTo(-bodyL * .4 - tl, tw); ctx.lineTo(-bodyL * .4, bw * .4); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.4, r * .04); ctx.stroke();
+  ctx.fillStyle = P.fill; ctx.beginPath(); ctx.ellipse(0, 0, bodyL * .55, bw, 0, 0, TAU); ctx.fill(); ctx.stroke();
+  if (detail) { ctx.fillStyle = 'rgba(255,250,235,.25)'; ctx.beginPath(); ctx.ellipse(-r * .05, 0, bodyL * .38, bw * .5, 0, 0, TAU); ctx.fill(); }
+  const hx = bodyL * .55, hr = r * (raptor ? .36 : .32);
+  ctx.fillStyle = raptor && big ? 'hsl(20,25%,85%)' : P.fill; ctx.beginPath(); ctx.arc(hx, 0, hr, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#e2b13c';
+  if (raptor) { ctx.beginPath(); ctx.moveTo(hx + hr * .7, -hr * .35); ctx.quadraticCurveTo(hx + hr * 1.9, 0, hx + hr * 1.3, hr * .45); ctx.lineTo(hx + hr * .7, hr * .35); ctx.fill(); }
+  else { ctx.beginPath(); ctx.moveTo(hx + hr * .75, -hr * .3); ctx.lineTo(hx + hr * (g.d > .6 ? 1.9 : 1.6), 0); ctx.lineTo(hx + hr * .75, hr * .3); ctx.fill(); }
+  const er = Math.max(.8, hr * (.22 + g.eyeSize * .12));
+  for (const side of [-1, 1]) { ctx.fillStyle = raptor ? '#f2c230' : '#f4f0e2'; ctx.beginPath(); ctx.arc(hx + hr * .25, side * hr * .55, er, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.arc(hx + hr * .3, side * hr * .55, er * .55, 0, TAU); ctx.fill(); }
+  if (g.eyeN > 2) { ctx.fillStyle = '#f4f0e2'; ctx.beginPath(); ctx.arc(hx - hr * .2, 0, er * .8, 0, TAU); ctx.fill(); ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.arc(hx - hr * .15, 0, er * .45, 0, TAU); ctx.fill(); }
+}
 function drawVert(ctx, g, r, ph, P, detail) {
+  if (g.wing > .5) return drawBird(ctx, g, r, ph, P, detail);
+  if (g.amnio > .5) return SIM.scene.aquatic ? drawMarineReptile(ctx, g, r, ph, P, detail) : drawLandReptile(ctx, g, r, ph, P, detail);
   if (SIM.scene.aquatic) drawFish(ctx, g, r, ph, P, detail);
   else drawTetrapod(ctx, g, r, ph, P, detail);
 }

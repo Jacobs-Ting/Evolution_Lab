@@ -103,7 +103,7 @@ function setTool(t) {
 $('toolLook').onclick = () => setTool('look');
 $('toolSow').onclick = () => setTool('sow');
 $('sowRandom').onclick = () => { SIM.sprinkleScatter(50); $('hint').hidden = true; refreshAll(); };
-$('resetBtn').onclick = () => { SIM.reset(); selId = null; selAgent = null; $('hint').hidden = false; setTool('sow'); refreshAll(); };
+$('resetBtn').onclick = () => { SIM.reset(); spriteCache.clear(); bboxCache.clear(); selId = null; selAgent = null; $('hint').hidden = false; setTool('sow'); refreshAll(); };
 document.querySelectorAll('#speeds button').forEach(b => b.onclick = () => {
   speed = +b.dataset.s; document.querySelectorAll('#speeds button').forEach(x => x.setAttribute('aria-pressed', x === b));
 });
@@ -236,6 +236,30 @@ function drawParticles(g) {
   }
 }
 
+/* ----- sprite cache: each species is pre-drawn into a few animation frames ----- */
+const NF = 6, spriteCache = new Map();
+function getSprite(spId, s) {
+  let e = spriteCache.get(spId);
+  if (e) { e.used = frameN; return e; }
+  const sp = SIM.species.get(spId); if (!sp) return null;
+  const g = sp.proto, rr = (2.2 + g.size * 15) * 1.2;
+  const R = Math.max(7, Math.min(26, rr * s * 1.15)), ext = Math.ceil(R * 4.6);
+  const frames = [];
+  for (let f = 0; f < NF; f++) {
+    const c = document.createElement('canvas'); c.width = c.height = ext * 2;
+    const x = c.getContext('2d'); x.translate(ext, ext);
+    drawCreature(x, g, R, f / NF * TAU, false, false);
+    frames.push(c);
+  }
+  e = { R, ext, frames, used: frameN };
+  spriteCache.set(spId, e);
+  if (spriteCache.size > 140) {
+    const arr = [...spriteCache.entries()].sort((a, b) => a[1].used - b[1].used);
+    for (let i = 0; i < 30; i++) spriteCache.delete(arr[i][0]);
+  }
+  return e;
+}
+
 /* ----- world render ----- */
 function render() {
   fitCanvas();
@@ -264,11 +288,21 @@ function render() {
   spawnParticles(); drawParticles(ctx);
   // creatures
   const A = SIM.agents, ph0 = frameN * .02;
-  for (let i = 0; i < A.length; i++) {
+  for (let pass = 0; pass < 2; pass++) for (let i = 0; i < A.length; i++) {
     const a = A[i];
+    if ((a.g.wing > .5) !== (pass === 1)) continue;
     ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.g.radial > .62 && a.g.segs <= 3 && !(a.g.spine > .5) ? a.ph * .05 : a.ang);
-    if (a.g.spine > .5 && sc.aquatic && Math.cos(a.ang) < 0) ctx.scale(1, -1);
-    drawCreature(ctx, a.g, a.r * 1.2, a.ph, false, a.dorm);
+    if (a.g.spine > .5 && sc.aquatic && Math.cos(a.ang) < 0 && !(a.g.amnio > .5 && (a.g.armor > .45 || a.g.segs >= 7))) ctx.scale(1, -1);
+    const rr = a.r * 1.2;
+    if (a.dorm || (rr < 3.3 && !(a.g.spine > .5))) drawCreature(ctx, a.g, rr, a.ph, false, a.dorm);
+    else {
+      const sp = getSprite(a.sp, s);
+      if (!sp) drawCreature(ctx, a.g, rr, a.ph, false, false);
+      else {
+        const k = rr / sp.R, f = Math.floor(((a.ph % TAU) + TAU) % TAU / TAU * NF) % NF;
+        ctx.scale(k, k); ctx.drawImage(sp.frames[f], -sp.ext, -sp.ext);
+      }
+    }
     ctx.restore();
   }
   // selection
@@ -332,7 +366,7 @@ function drawPortrait(c, sp, ph, pad) {
 }
 
 /* ----- species selection ----- */
-function complexity(g) { return (g.spine || 0) * 12 + (g.jaw || 0) * 5 + g.segs + g.limbs * 1.5 + g.tent + g.eyeN + g.glow * 5 + g.armor * 3 + g.spikes * 4 + g.size * 6 + g.d * 4 + (g.pTol > .62 && g.armor < .3 ? 2 : 0); }
+function complexity(g) { return (g.spine || 0) * 12 + (g.jaw || 0) * 5 + (g.amnio || 0) * 8 + (g.wing || 0) * 10 + g.segs + g.limbs * 1.5 + g.tent + g.eyeN + g.glow * 5 + g.armor * 3 + g.spikes * 4 + g.size * 6 + g.d * 4 + (g.pTol > .62 && g.armor < .3 ? 2 : 0); }
 function liveNotable() { return [...SIM.species.values()].filter(s => s.died === null && s.pop > 0 && s.notable); }
 function autoSelect() {
   const L = liveNotable(); if (!L.length) { selId = null; return; }
@@ -357,12 +391,13 @@ function renderCard() {
     `<span>祖先 <b>${par ? par.cn : '原始海洋'}</b></span>`;
   const rows = [
     ['體長', g.size, fmtLen(g.size)], ['食性', g.d, dietLabel(g.d)], ['速度', g.speed, Math.round(g.speed * 100) + '%'],
-    ['眼睛', g.eyeN / 8, g.eyeN + ' 隻'], ['附肢', g.limbs / 5, g.spine > .5 ? (SIM.scene.aquatic ? (g.limbs ? '肉鰭 ' + g.limbs + ' 對' : '鰭') : g.limbs >= 2 ? '四肢' : '無肢') : g.limbs + ' 對'], ['體節', g.segs / 10, g.segs + ' 節'],
+    ['眼睛', g.eyeN / 8, g.eyeN + ' 隻'], ['附肢', g.limbs / 5, g.spine > .5 ? (SIM.scene.aquatic ? (g.amnio > .5 ? '鰭狀肢' : g.limbs ? '肉鰭 ' + g.limbs + ' 對' : '鰭') : g.limbs >= 2 ? '四肢' : '無肢') : g.limbs + ' 對'], ['體節', g.segs / 10, g.segs + ' 節'],
     ['觸手', g.tent / 10, g.tent + ' 條'], ['甲殼', g.armor, Math.round(g.armor * 100) + '%'], ['棘刺', g.spikes, Math.round(g.spikes * 100) + '%'],
     ['發光', g.glow, Math.round(g.glow * 100) + '%'], ['最適溫', g.tOpt, Math.round(-30 + g.tOpt * 140) + '°C'],
     ['耐壓', g.pTol, fmtAtm(g.pTol * 100)], ['耐旱', g.dry, Math.round(g.dry * 100) + '%']
   ];
   rows.unshift(['脊椎', g.spine, g.spine > .5 ? '有脊椎' : '無'], ['下顎', g.jaw, g.jaw > .5 ? '有頜' : g.spine > .5 ? '無頜' : '—']);
+  if (g.spine > .5) rows.splice(2, 0, ['羊膜卵', g.amnio || 0, g.amnio > .5 ? '有（爬行類）' : '無'], ['翅膀', g.wing || 0, g.wing > .5 ? '羽翼' : '無']);
   if (SIM.scene.space || g.dorm > .05 || g.shield > .05 || g.sail > .05) rows.push(
     ['隱生休眠', g.dorm, Math.round(g.dorm * 100) + '%'], ['黑色素', g.shield, Math.round(g.shield * 100) + '%'], ['太陽帆', g.sail, Math.round(g.sail * 100) + '%']);
   if (SIM.scene.space) rows.splice(rows.findIndex(r => r[0] === '耐壓'), 1);
@@ -447,7 +482,7 @@ function refreshAll() { renderStats(); renderLog(); renderGallery(); renderTree(
 
 /* ----- scene start ----- */
 function startScene(k, demo) {
-  SIM.setScene(k); buildParams(); buildEvents(); bboxCache.clear(); particles.length = 0; selId = null; selAgent = null; lastLog = null;
+  SIM.setScene(k); buildParams(); buildEvents(); bboxCache.clear(); spriteCache.clear(); particles.length = 0; selId = null; selAgent = null; lastLog = null;
   document.querySelectorAll('.scene').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === k));
   if (demo) {
     SIM.sprinkleScatter(70);
@@ -476,7 +511,7 @@ function loop() {
   if (frameN % 90 === 0) { renderGallery(); renderTree(); }
   requestAnimationFrame(loop);
 }
-window.addEventListener('resize', () => { bgKey = ''; renderTree(); renderGallery(); });
+window.addEventListener('resize', () => { bgKey = ''; spriteCache.clear(); renderTree(); renderGallery(); });
 startScene('deep', true);
 requestAnimationFrame(loop);
 })();
