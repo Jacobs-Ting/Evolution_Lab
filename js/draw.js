@@ -52,15 +52,212 @@ function drawTun(ctx, g, r) {
     ctx.beginPath(); ctx.ellipse(0, 0, rr * 1.25, rr * .8, 0, 3.6, 5.4); ctx.stroke();
   }
 }
+
+/* ---------- vertebrates ---------- */
+function vSpine(n, L, amp, ph, k, tailOnly) {
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const x = L * .5 - t * L;
+    const y = Math.sin(ph * 1.6 - t * k) * amp * Math.pow(t, tailOnly ? 1.4 : .9);
+    pts.push({ t, x, y });
+  }
+  return pts;
+}
+function outline(ctx, pts, wf) {
+  ctx.beginPath();
+  pts.forEach((p, i) => { const w = wf(p.t); i ? ctx.lineTo(p.x, p.y - w) : ctx.moveTo(p.x, p.y - w); });
+  for (let i = pts.length - 1; i >= 0; i--) { const p = pts[i], w = wf(p.t); ctx.lineTo(p.x, p.y + w); }
+  ctx.closePath();
+}
+function at(pts, t) {
+  const f = t * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(f)), u = f - i, a = pts[i], b = pts[i + 1];
+  return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, ang: Math.atan2(b.y - a.y, b.x - a.x) + Math.PI };
+}
+function drawFish(ctx, g, r, ph, P, detail) {
+  const eel = g.segs >= 7, shark = g.jaw > .5 && g.d > .78 && g.size > .4, agn = g.jaw < .5;
+  const L = r * (2.5 + g.segs * .14 + (eel ? 1.2 : 0));
+  const h = r * (eel ? .36 : .6 + g.armor * .1 + (shark ? .05 : 0));
+  const amp = r * (eel ? .45 : .2) * (.5 + g.speed);
+  const pts = vSpine(16, L, amp, ph, eel ? 7 : 4.2, !eel);
+  const wf = t => eel ? h * (t < .1 ? .45 + 5.5 * t : 1 - .75 * t) : h * (t < .2 ? .35 + .65 * Math.sqrt(t / .2) : 1 - .84 * Math.pow((t - .2) / .8, 1.25));
+  const lw = Math.max(.7, r * .07);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const tail = pts[pts.length - 1], pre = pts[pts.length - 3], ta = Math.atan2(tail.y - pre.y, tail.x - pre.x);
+  const finCol = P.gel ? P.fill2 : `hsla(${(P.hue + 12) % 360},45%,${P.gel ? 75 : 46}%,.85)`;
+  // caudal fin
+  ctx.save(); ctx.translate(tail.x, tail.y); ctx.rotate(ta);
+  const cf = r * (eel ? .35 : .75 + g.speed * .55);
+  ctx.fillStyle = finCol; ctx.beginPath(); ctx.moveTo(-r * .1, 0);
+  if (eel) { ctx.ellipse(cf * .4, 0, cf, cf * .45, 0, 0, TAU); }
+  else if (g.speed > .45 || shark) {
+    ctx.quadraticCurveTo(cf * .5, -cf * .2, cf * 1.05, -cf * (shark ? 1.15 : .95));
+    ctx.quadraticCurveTo(cf * .55, -cf * .1, cf * .62, 0);
+    ctx.quadraticCurveTo(cf * .55, cf * .1, cf * (shark ? .8 : 1.05), cf * (shark ? .65 : .95));
+    ctx.quadraticCurveTo(cf * .5, cf * .2, -r * .1, 0);
+  } else { ctx.quadraticCurveTo(cf * .9, -cf * .95, cf * 1.05, 0); ctx.quadraticCurveTo(cf * .9, cf * .95, -r * .1, 0); }
+  ctx.fill(); ctx.strokeStyle = P.edge; ctx.lineWidth = lw * .6; ctx.stroke();
+  if (detail && !eel) { ctx.strokeStyle = 'rgba(0,0,0,.18)'; for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(cf * .9, k * cf * .35); ctx.stroke(); } }
+  ctx.restore();
+  // dorsal fin(s)
+  const dfin = (t0, t1, hgt, spiny) => {
+    const a = at(pts, t0), b = at(pts, t1), m = at(pts, (t0 + t1) / 2);
+    ctx.fillStyle = finCol; ctx.beginPath(); ctx.moveTo(a.x, a.y - wf(t0) * .9);
+    ctx.quadraticCurveTo(m.x + r * .1, m.y - wf((t0 + t1) / 2) - hgt * 1.3, b.x - r * .05, b.y - wf(t1) - hgt * (shark ? .1 : .35));
+    ctx.lineTo(b.x, b.y - wf(t1) * .9); ctx.closePath(); ctx.fill(); ctx.strokeStyle = P.edge; ctx.lineWidth = lw * .5; ctx.stroke();
+    if (spiny) { ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.6, r * .05);
+      for (let k = 0; k <= 4; k++) { const q = at(pts, t0 + (t1 - t0) * k / 4); ctx.beginPath(); ctx.moveTo(q.x, q.y - wf(q.t || t0) * .8); ctx.lineTo(q.x + r * .08, q.y - wf(t0 + (t1 - t0) * k / 4) - hgt * (1.5 - k * .15)); ctx.stroke(); } }
+  };
+  if (eel) dfin(.25, .95, r * .18, false);
+  else if (shark) dfin(.32, .48, r * .95, false);
+  else { dfin(.3, .55, r * (.4 + g.spikes * .3), g.spikes > .3); if (g.segs >= 4) dfin(.62, .74, r * .22, false); }
+  // anal fin
+  if (!eel) { const a = at(pts, .66), b = at(pts, .78); ctx.fillStyle = finCol; ctx.beginPath(); ctx.moveTo(a.x, a.y + wf(.66) * .9); ctx.lineTo(b.x - r * .15, b.y + wf(.78) + r * .3); ctx.lineTo(b.x, b.y + wf(.78) * .9); ctx.fill(); }
+  // pelvic / lobe fins (behind body)
+  const flap = Math.sin(ph * 2.2) * .35;
+  const lobe = (t, sz) => {
+    const q = at(pts, t); ctx.save(); ctx.translate(q.x, q.y + wf(t) * .55); ctx.rotate(.75 + flap);
+    ctx.fillStyle = `hsla(${P.hue},40%,40%,.95)`; ctx.beginPath(); ctx.ellipse(-sz * .5, 0, sz * .6, sz * .22, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = finCol; ctx.beginPath(); ctx.ellipse(-sz * 1.05, 0, sz * .45, sz * .3, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = P.edge; ctx.lineWidth = lw * .5; ctx.stroke(); ctx.restore();
+  };
+  if (g.limbs >= 2) lobe(.62, r * .55);
+  // body
+  outline(ctx, pts, wf);
+  ctx.fillStyle = P.fill; ctx.fill();
+  ctx.save(); outline(ctx, pts, wf); ctx.clip();
+  ctx.fillStyle = P.gel ? 'rgba(255,255,255,.12)' : 'rgba(255,248,230,.28)';
+  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y + wf(p.t) * .15) : ctx.moveTo(p.x, p.y + wf(p.t) * .15));
+  for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].y + h * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.16)'; ctx.fillRect(-L, -h * 3, L * 2, h * 2.55);
+  if (detail && g.armor > .25 && !P.gel) {
+    ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.lineWidth = Math.max(.5, r * .035);
+    for (let i = 3; i < 13; i++) for (let k = -1; k <= 1; k++) { const p = pts[i]; ctx.beginPath(); ctx.arc(p.x - r * .1, p.y + k * wf(p.t) * .55, r * .17, -1.1, 1.1); ctx.stroke(); }
+  }
+  if (g.armor > .4 && agn || g.armor > .55) { const hx = pts[0].x; ctx.fillStyle = 'rgba(30,24,20,.42)'; ctx.beginPath(); ctx.ellipse(hx - L * .1, pts[1].y, L * .2, h * 1.05, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,240,210,.25)'; ctx.lineWidth = Math.max(.5, r * .05); ctx.beginPath(); ctx.ellipse(hx - L * .1, pts[1].y, L * .17, h * .85, 0, 0, TAU); ctx.stroke(); }
+  ctx.restore();
+  outline(ctx, pts, wf); ctx.strokeStyle = P.edge; ctx.lineWidth = lw; ctx.stroke();
+  // lateral line
+  ctx.strokeStyle = 'rgba(255,255,255,.22)'; ctx.lineWidth = Math.max(.5, r * .04);
+  ctx.beginPath(); for (let i = 3; i < 15; i++) { const p = pts[i]; i > 3 ? ctx.lineTo(p.x, p.y - wf(p.t) * .1) : ctx.moveTo(p.x, p.y - wf(p.t) * .1); } ctx.stroke();
+  // gills
+  const gq = at(pts, .19); ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = Math.max(.6, r * .06);
+  if (agn) { ctx.fillStyle = 'rgba(0,0,0,.45)'; for (let k = 0; k < 6; k++) { const q = at(pts, .13 + k * .022); ctx.beginPath(); ctx.arc(q.x, q.y + wf(q.t || .15) * .05, Math.max(.6, r * .055), 0, TAU); ctx.fill(); } }
+  else if (shark) { for (let k = 0; k < 5; k++) { const q = at(pts, .15 + k * .025); ctx.beginPath(); ctx.moveTo(q.x, q.y - h * .35); ctx.lineTo(q.x - r * .04, q.y + h * .35); ctx.stroke(); } }
+  else { ctx.beginPath(); ctx.arc(gq.x + r * .35, gq.y, h * .8, Math.PI * .72, Math.PI * 1.28); ctx.stroke(); }
+  // pectoral fin (in front of body)
+  if (g.limbs >= 1) lobe(.28, r * .6);
+  else { const q = at(pts, .27); ctx.save(); ctx.translate(q.x, q.y + h * .25); ctx.rotate(.55 + flap);
+    ctx.fillStyle = finCol; ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(-r * .45, r * .05, -r * (shark ? 1 : .7), r * (shark ? .55 : .3)); ctx.quadraticCurveTo(-r * .3, -r * .08, 0, 0); ctx.fill(); ctx.restore(); }
+  // head: mouth, eyes, lure, photophores
+  const hd = pts[0];
+  if (agn) { ctx.fillStyle = 'rgba(20,10,10,.7)'; ctx.beginPath(); ctx.arc(hd.x - r * .02, hd.y + h * .15, Math.max(.7, h * .2), 0, TAU); ctx.fill(); }
+  else {
+    const gape = g.d > .72 ? (Math.sin(ph * 2.6) * .5 + .5) * h * .35 : h * .06, mx = hd.x - L * (shark ? .1 : .07);
+    ctx.fillStyle = 'rgba(25,10,12,.85)'; ctx.beginPath(); ctx.moveTo(hd.x + r * .02, hd.y + h * .1); ctx.lineTo(mx, hd.y + h * .25); ctx.lineTo(hd.x, hd.y + h * .1 + gape); ctx.closePath(); ctx.fill();
+    if (g.d > .72 && (detail || r > 6)) { ctx.fillStyle = '#f2ecdc'; const n = 5; for (let k = 0; k < n; k++) { const u = k / n, x = hd.x - (hd.x - mx) * u, y = hd.y + h * .1 + h * .15 * u; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - r * .05, y + r * .1); ctx.lineTo(x - r * .1, y); ctx.fill(); } }
+  }
+  const ne = g.eyeN;
+  if (ne > 0) {
+    const er = Math.max(.9, h * (.16 + g.eyeSize * .22));
+    for (let k = 0; k < Math.min(ne - 1, 4) + 1; k++) {
+      const q = at(pts, .07 + k * .045), ey = q.y - h * (k % 2 ? .05 : .32);
+      ctx.fillStyle = '#f4f0e2'; ctx.beginPath(); ctx.arc(q.x, ey, er * (k ? .75 : 1), 0, TAU); ctx.fill();
+      ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.arc(q.x + er * .15, ey, er * (k ? .75 : 1) * .6, 0, TAU); ctx.fill();
+      if (detail) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(q.x + er * .3, ey - er * .3, er * .18, 0, TAU); ctx.fill(); }
+    }
+  } else { const q = at(pts, .07); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(q.x, q.y - h * .3, Math.max(.6, h * .1), 0, TAU); ctx.fill(); }
+  if (g.glow > .2) for (let k = 0; k < 7; k++) { const q = at(pts, .2 + k * .1); glowDot(ctx, q.x, q.y + wf(q.t || .2) * .7, Math.max(1.3, r * .16 * g.glow + r * .05), P.glow); }
+  if (g.glow > .45 && g.d > .6) {
+    const bx = hd.x + r * .8, by = hd.y - h * 1.6 + Math.sin(ph) * r * .15;
+    ctx.strokeStyle = P.edge; ctx.lineWidth = Math.max(.6, r * .05); ctx.beginPath(); ctx.moveTo(hd.x - L * .1, hd.y - h * .8); ctx.quadraticCurveTo(hd.x + r * .2, hd.y - h * 2.2, bx, by); ctx.stroke();
+    glowDot(ctx, bx, by, r * (.35 + g.glow * .3), P.glow);
+  }
+}
+function drawTetrapod(ctx, g, r, ph, P, detail) {
+  const frog = g.segs <= 3 && g.limbs >= 2, legless = g.limbs < 2, cave = SIM.scene.key === 'cave' && g.eyeN === 0;
+  const L = r * (legless ? 3.4 + g.segs * .2 : frog ? 1.7 : 2.6 + g.segs * .12);
+  const big = g.d > .78 && g.size > .45;
+  const amp = r * (legless ? .45 : frog ? 0 : .22);
+  const pts = vSpine(16, L, amp, ph * (legless ? 1 : .9), legless ? 6.5 : 3.5, false);
+  const hw = r * (big ? .62 : .5);
+  const wf = legless ? (t => r * .38 * (t < .06 ? .55 + 7.5 * t : t > .92 ? 1 - (t - .92) * 9 : 1))
+    : frog ? (t => r * (t < .25 ? .45 + .9 * t : t < .8 ? .68 + .1 * Math.sin((t - .25) / .55 * Math.PI) : .78 - (t - .8) * 3.3))
+    : (t => t < .16 ? hw * (.55 + 2.8 * t) : t < .22 ? hw * (1 - (t - .16) * 2.5) : t < .6 ? hw * (.88 + .18 * Math.sin((t - .22) / .38 * Math.PI)) : hw * .88 * Math.pow(1 - (t - .6) / .4, 1.1) + r * .02);
+  const sk = cave ? 'hsl(350,35%,82%)' : P.fill, sk2 = cave ? 'hsl(350,40%,72%)' : P.fill2;
+  const edge = cave ? 'hsl(350,30%,55%)' : P.edge, lw = Math.max(.7, r * .07);
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  // legs
+  if (!legless) {
+    const leg = (t, side, hind, phase) => {
+      const q = at(pts, t), w = wf(t), sw = Math.sin(ph * 2.2 + phase);
+      const len = r * (hind ? (frog ? 1.25 : .8) : (frog ? .55 : .7)) * (big ? 1.15 : 1);
+      const bx = q.x, by = q.y + side * w * .8;
+      const dir = hind ? -1 : 1;
+      const kx = bx + dir * (frog && hind ? -len * .1 : len * .25 + sw * len * .25), ky = by + side * len * (frog && hind ? .55 : .7);
+      const fx = kx + dir * (frog && hind ? len * .65 : len * .3 - sw * len * .2), fy = ky + side * len * (frog && hind ? -.05 : .25);
+      ctx.strokeStyle = sk; ctx.lineWidth = Math.max(1.1, r * (hind && frog ? .26 : .18));
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(kx, ky); ctx.lineTo(fx, fy); ctx.stroke();
+      ctx.strokeStyle = edge; ctx.lineWidth = Math.max(.5, r * .06);
+      const toes = 4;
+      for (let k = 0; k < toes; k++) { const a = (dir > 0 ? 0 : Math.PI) + side * (-.5 + k * .38); const tl = r * (frog && hind ? .32 : .2);
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(a) * tl, fy + Math.sin(a) * tl * side * side); ctx.stroke();
+        if (detail) { ctx.fillStyle = edge; ctx.beginPath(); ctx.arc(fx + Math.cos(a) * tl, fy + Math.sin(a) * tl, Math.max(.5, r * .045), 0, TAU); ctx.fill(); } }
+    };
+    const fT = frog ? .3 : .24, hT = frog ? .78 : .58;
+    leg(fT, -1, false, 0); leg(fT, 1, false, Math.PI); leg(hT, -1, true, Math.PI); leg(hT, 1, true, 0);
+  }
+  // external gills (axolotl / olm)
+  if (cave || (g.eyeN === 0 && !legless)) {
+    for (const side of [-1, 1]) for (let k = 0; k < 3; k++) {
+      const q = at(pts, .17), a = side * (1.9 + k * .32) + Math.sin(ph + k) * .1, len = r * (.5 - k * .06);
+      ctx.strokeStyle = 'hsl(352,70%,62%)'; ctx.lineWidth = Math.max(.7, r * .07);
+      const ex = q.x + Math.cos(a) * len, ey = q.y + Math.sin(a) * len + side * wf(.17) * .6;
+      ctx.beginPath(); ctx.moveTo(q.x, q.y + side * wf(.17) * .7); ctx.lineTo(ex, ey); ctx.stroke();
+      if (detail) { ctx.lineWidth = Math.max(.4, r * .025); for (let j = 1; j < 4; j++) { const u = j / 4, px = q.x + (ex - q.x) * u, py = q.y + side * wf(.17) * .7 + (ey - q.y - side * wf(.17) * .7) * u; ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - r * .08, py + side * r * .07); ctx.stroke(); } }
+    }
+  }
+  // body
+  outline(ctx, pts, wf); ctx.fillStyle = sk; ctx.fill();
+  ctx.save(); outline(ctx, pts, wf); ctx.clip();
+  ctx.fillStyle = 'rgba(0,0,0,.12)'; pts.forEach(p => { if (p.t > .05) { ctx.beginPath(); ctx.ellipse(p.x, p.y, L / 30, wf(p.t) * .35, 0, 0, TAU); ctx.fill(); } });
+  if (legless) { ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.lineWidth = Math.max(.5, r * .04); for (let i = 2; i < 15; i++) { const p = pts[i]; ctx.beginPath(); ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x, p.y + r); ctx.stroke(); } }
+  else if (!cave) {
+    ctx.fillStyle = sk2;
+    for (let i = 3; i < (frog ? 13 : 14); i += 2) for (const side of [-1, 1]) { const p = pts[i]; ctx.beginPath(); ctx.arc(p.x + (i % 4 ? r * .1 : 0), p.y + side * wf(p.t) * .45, Math.max(.6, wf(p.t) * .2), 0, TAU); ctx.fill(); }
+  }
+  if (g.armor > .45) { ctx.fillStyle = 'rgba(40,30,25,.4)'; for (let i = 3; i < 12; i++) { const p = pts[i]; ctx.fillRect(p.x - L / 36, p.y - wf(p.t) * .3, L / 20, wf(p.t) * .6); } }
+  ctx.restore();
+  outline(ctx, pts, wf); ctx.strokeStyle = edge; ctx.lineWidth = lw; ctx.stroke();
+  if (g.spikes > .35) { ctx.fillStyle = edge; for (let i = 4; i < 13; i++) { const p = pts[i]; ctx.beginPath(); ctx.moveTo(p.x - r * .08, p.y); ctx.lineTo(p.x + r * .05, p.y - r * .05); ctx.lineTo(p.x + r * .05, p.y + r * .05); ctx.fill(); } }
+  if (g.glow > .25) for (let i = 3; i < 13; i += 2) for (const side of [-1, 1]) { const p = pts[i]; glowDot(ctx, p.x, p.y + side * wf(p.t) * .5, Math.max(1.3, r * .2 * g.glow + r * .05), P.glow); }
+  // eyes on top of head
+  const hd = at(pts, frog ? .1 : .07);
+  if (g.eyeN > 0) {
+    const er = Math.max(.9, r * (.13 + g.eyeSize * .16) * (frog ? 1.35 : 1));
+    for (const side of [-1, 1]) { const ex = hd.x - r * .05, ey = hd.y + side * wf(.08) * .62;
+      ctx.fillStyle = frog ? sk : '#f4f0e2'; ctx.beginPath(); ctx.arc(ex, ey, er * 1.15, 0, TAU); ctx.fill();
+      ctx.fillStyle = frog ? '#d9b44a' : '#f4f0e2'; ctx.beginPath(); ctx.arc(ex, ey, er * .9, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.ellipse(ex + er * .1, ey, er * .55, er * (frog ? .3 : .55), 0, 0, TAU); ctx.fill(); }
+    if (g.eyeN > 2) for (let k = 2; k < Math.min(g.eyeN, 5); k++) { const q = at(pts, .12 + (k - 2) * .04); ctx.fillStyle = '#f4f0e2'; ctx.beginPath(); ctx.arc(q.x, q.y, er * .6, 0, TAU); ctx.fill(); ctx.fillStyle = '#0b0b10'; ctx.beginPath(); ctx.arc(q.x, q.y, er * .35, 0, TAU); ctx.fill(); }
+  } else if (legless) { ctx.fillStyle = 'rgba(0,0,0,.35)'; for (const side of [-1, 1]) { ctx.beginPath(); ctx.arc(hd.x - r * .1, hd.y + side * r * .16, Math.max(.5, r * .05), 0, TAU); ctx.fill(); } }
+  if (big && detail) { ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = Math.max(.6, r * .05); ctx.beginPath(); ctx.moveTo(pts[0].x - r * .05, pts[0].y); ctx.lineTo(hd.x - r * .5, hd.y); ctx.stroke(); }
+}
+function drawVert(ctx, g, r, ph, P, detail) {
+  if (SIM.scene.aquatic) drawFish(ctx, g, r, ph, P, detail);
+  else drawTetrapod(ctx, g, r, ph, P, detail);
+}
 function drawCreature(ctx, g, r, ph, detail, dorm) {
   if (dorm) return drawTun(ctx, g, r);
   const P = cpal(g);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  if (r < 3.3 && !detail) {
+  if (r < 3.3 && !detail && !(g.spine > .5)) {
     ctx.fillStyle = P.fill; ctx.beginPath(); ctx.arc(0, 0, Math.max(1.5, r), 0, TAU); ctx.fill();
     if (g.glow > .4) glowDot(ctx, 0, 0, r * 3, P.glow);
     return;
   }
+  if (g.spine > .5) return drawVert(ctx, g, r, ph, P, detail);
   const radial = g.radial > .62 && g.segs <= 3;
   if ((g.sail || 0) > .15) drawSail(ctx, g, r, ph, P, radial);
   if (radial) return drawRadial(ctx, g, r, ph, P, detail);

@@ -28,7 +28,7 @@ const SCENES = {
   cave: {
     key: 'cave', name: '地底', sub: '石灰岩洞穴 · 地下 50–400 公尺', aquatic: false,
     def: { water: 70, light: 16, o2: 30, press: 20, temp: 32 },
-    src: [[520, 380, .9], [820, 540, .8], [660, 170, .7], [360, 560, .8], [130, 470, .6]], srcS: 55, heatS: 0, heat: 0, shaft: 230,
+    src: [[520, 380, .9], [820, 540, .8], [660, 170, .7], [360, 560, .8], [130, 470, .6], [250, 300, .6]], srcS: 62, boost: 1.5, heatS: 0, heat: 0, shaft: 230,
     zones: ['50 m', '150 m', '280 m', '400 m'],
     epi: ['cavernicola', 'troglodytes', 'subterranea', 'obscura', 'lapidea', 'stygia', 'umbrosa', 'speluncae', 'caeca', 'calcarea']
   },
@@ -44,7 +44,7 @@ const surfY = x => 58 + 12 * Math.sin(x * .013) + 8 * Math.sin(x * .037 + 1);
 
 const S = {
   W, H, TICK_YEARS, SCENES, scene: null, params: {}, mods: { temp: 0, o2: 0, light: 0, rad: 0 }, env: null, orbit: null, surfY,
-  agents: [], species: new Map(), nextSp: 1, uid: 0, tick: 0, log: [], milestones: {}, extinct: 0, capA: 650, capH: 420,
+  agents: [], species: new Map(), nextSp: 1, uid: 0, tick: 0, log: [], milestones: {}, extinct: 0, capA: 650, capH: 380, capP: 170, vertRate: 1,
   fL: new Float32Array(FW * FH), fC: new Float32Array(FW * FH), fT: new Float32Array(FW * FH), fW: new Float32Array(FW * FH), fR: new Float32Array(FW * FH),
   fieldDirty: true, grid: Array.from({ length: GW * GH }, () => []), autoN: new Int16Array(GW * GH), FW, FH, FS
 };
@@ -121,9 +121,9 @@ function computeFields() {
 function fIdx(x, y) { return Math.min(FH - 1, (y / FS) | 0) * FW + Math.min(FW - 1, (x / FS) | 0); }
 function fieldAt(x, y) { const i = fIdx(x, y); return { L: S.fL[i], C: S.fC[i], T: S.fT[i], W: S.fW[i], R: S.fR[i] }; }
 
-const FLT = ['size', 'speed', 'armor', 'spikes', 'eyeSize', 'glow', 'radial', 'd', 'chemo', 'tOpt', 'tW', 'pTol', 'dry', 'dorm', 'shield', 'sail'];
+const FLT = ['size', 'speed', 'armor', 'spikes', 'eyeSize', 'glow', 'radial', 'd', 'chemo', 'tOpt', 'tW', 'pTol', 'dry', 'dorm', 'shield', 'sail', 'spine', 'jaw'];
 const DK = [['size', 1.3, 1], ['speed', 1, 1], ['armor', 1, 1], ['spikes', 1, 1], ['eyeN', 1, 6], ['eyeSize', .4, 1], ['glow', 1, 1],
-  ['limbs', 1, 4], ['segs', 1, 7], ['tent', 1, 7], ['radial', .8, 1], ['d', 1.6, 1], ['chemo', .6, 1], ['tOpt', 1, 1], ['pTol', .6, 1], ['dry', .6, 1], ['dorm', .8, 1], ['shield', .8, 1], ['sail', 1, 1]];
+  ['limbs', 1, 4], ['segs', 1, 7], ['tent', 1, 7], ['radial', .8, 1], ['d', 1.6, 1], ['chemo', .6, 1], ['tOpt', 1, 1], ['pTol', .6, 1], ['dry', .6, 1], ['dorm', .8, 1], ['shield', .8, 1], ['sail', 1, 1], ['spine', 2.2, 1], ['jaw', 1.2, 1]];
 const DKW = DK.reduce((s, k) => s + k[1], 0);
 function gdist(a, b) {
   let s = 0;
@@ -139,17 +139,18 @@ function seedGenome(x, y) {
     chemo: f.C > f.L ? .7 + rnd() * .3 : rnd() * .3,
     tOpt: S.scene.space ? c01(.4 + gauss() * .05) : c01((f.T + 30) / 140 + gauss() * .04), tW: S.scene.space ? .5 + rnd() * .15 : .25 + rnd() * .15,
     pTol: c01(S.env.press + gauss() * .08), dry: c01((S.scene.space ? .35 : .2) + gauss() * .1), hue: rnd(),
-    dorm: S.scene.space ? .25 + rnd() * .2 : 0, shield: S.scene.space ? rnd() * .25 : 0, sail: 0
+    dorm: S.scene.space ? .25 + rnd() * .2 : 0, shield: S.scene.space ? rnd() * .25 : 0, sail: 0, spine: 0, jaw: 0
   };
 }
 
 function mutate(p) {
   const g = { ...p }; let macro = null;
   const mr = .25 * (1 + S.env.rad * 1.5);
-  for (const k of FLT) if (rnd() < mr) g[k] = c01(g[k] + gauss() * .06);
+  const space = S.scene.space;
+  for (const k of FLT) if (rnd() < mr && (space || (k !== 'dorm' && k !== 'shield' && k !== 'sail'))) g[k] = c01(g[k] + gauss() * .06);
   g.hue = (g.hue + gauss() * .012 + 1) % 1;
   if (rnd() < .05) g.eyeN = clamp(g.eyeN + (rnd() < .5 ? -1 : 1), 0, 8);
-  if (rnd() < .04) g.limbs = clamp(g.limbs + (rnd() < .5 ? -1 : 1), 0, 5);
+  if (rnd() < (g.spine > .5 && !S.scene.aquatic ? .015 : .04)) g.limbs = clamp(g.limbs + (rnd() < .5 ? -1 : 1), g.spine > .5 && !S.scene.aquatic && g.limbs >= 2 ? 2 : 0, g.spine > .5 ? 2 : 5);
   if (rnd() < .04) g.segs = clamp(g.segs + (rnd() < .5 ? -1 : 1), 1, 10);
   if (rnd() < .05) g.tent = clamp(g.tent + (rnd() < .5 ? -1 : 1), 0, 10);
   if (rnd() < .008) {
@@ -165,6 +166,16 @@ function mutate(p) {
     else if (t === 1) { g.shield = c01(g.shield + .3); macro = '黑色素堆積'; }
     else { g.dorm = c01(g.dorm + .25); g.dry = c01(g.dry + .2); macro = '隱生基因'; }
   }
+  if (g.d > .42 && g.spine < .3 && g.size > .08 && rnd() < S.vertRate * .012) {
+    g.spine = c01(g.spine + .62); g.segs = Math.max(3, g.segs); g.speed = c01(g.speed + .1); g.size = c01(g.size + .06);
+    g.tent = Math.min(g.tent, 1); g.radial = Math.min(g.radial, .3); macro = '脊索';
+    if (g.eyeN < 2) { g.eyeN = 2; g.eyeSize = Math.max(g.eyeSize, .45); }
+  } else if (g.spine > .5 && g.jaw < .5 && rnd() < S.vertRate * .02) {
+    g.jaw = c01(g.jaw + .55); g.d = c01(Math.max(g.d, .6) + .08); macro = '下顎';
+  } else if (g.spine > .5 && g.limbs < 2 && !S.scene.aquatic && rnd() < S.vertRate * .05) {
+    g.limbs = 2; g.dry = c01(g.dry + .05); macro = '四肢';
+  }
+  if (g.spine > .45) { g.limbs = Math.min(g.limbs, 2); g.radial = Math.min(g.radial, .4); if (g.tent > 2 && rnd() < .3) g.tent--; }
   if (g.d < .4 && rnd() < .006) { g.d = c01(g.d + .32); g.speed = c01(g.speed + .18); g.size = c01(g.size + .04); macro = '吞噬作用'; }
   return [g, macro];
 }
@@ -175,30 +186,32 @@ function makeAgent(x, y, g, sp, e) {
 
 /* ---------- naming ---------- */
 function traitList(g) {
-  const t = [];
+  const t = [], V = g.spine > .5;
   if (g.eyeN === 0 && g.d > .45) t.push(['盲眼', 'Caeco', .55]);
   if (g.eyeN >= 4) t.push(['多眼', 'Argo', g.eyeN / 8 + .3]);
   else if (g.eyeN > 0 && g.eyeSize > .65) t.push(['巨眼', 'Megalops', g.eyeSize]);
   if (g.glow > .45) t.push(['發光', 'Lampro', g.glow + .2]);
   if (g.armor > .55) t.push(['重甲', 'Ostraco', g.armor]);
   if (g.spikes > .45) t.push(['棘刺', 'Acantho', g.spikes]);
-  if (g.tent >= 4) t.push(['觸手', 'Plocamo', g.tent / 10 + .3]);
-  if (g.segs >= 6) t.push(['多節', 'Polymero', g.segs / 10 + .2]);
-  if (g.limbs >= 3) t.push(['多足', 'Myrio', g.limbs / 5 + .2]);
+  if (!V && g.tent >= 4) t.push(['觸手', 'Plocamo', g.tent / 10 + .3]);
+  if (!V && g.segs >= 6) t.push(['多節', 'Polymero', g.segs / 10 + .2]);
+  if (!V && g.limbs >= 3) t.push(['多足', 'Myrio', g.limbs / 5 + .2]);
   if (g.size > .6) t.push(['巨型', 'Giganto', g.size + .1]);
   else if (g.size < .1) t.push(['微', 'Micro', .12]);
-  if (g.eyeN > 0 && g.eyeN < 4 && !(g.eyeSize > .65)) t.push(['眼點', 'Ocello', .2 + g.eyeN * .04]);
+  if (!V && g.eyeN > 0 && g.eyeN < 4 && !(g.eyeSize > .65)) t.push(['眼點', 'Ocello', .2 + g.eyeN * .04]);
   if (g.glow > .25 && g.glow <= .45) t.push(['微光', 'Phengo', g.glow * .6]);
   if (g.armor > .3 && g.armor <= .55) t.push(['殼', 'Testo', g.armor * .5]);
-  if (g.segs >= 2 && g.segs < 6) t.push(['鏈', 'Catena', .15 + g.segs * .03]);
-  if (g.tent >= 1 && g.tent < 4) t.push(['鞭', 'Mastigo', .15 + g.tent * .04]);
-  if (g.limbs >= 1 && g.limbs < 3) t.push(['足', 'Podo', .2 + g.limbs * .05]);
-  if (g.radial > .45 && g.radial <= .62) t.push(['星', 'Astro', g.radial * .4]);
+  if (!V && g.segs >= 2 && g.segs < 6) t.push(['鏈', 'Catena', .15 + g.segs * .03]);
+  if (!V && g.tent >= 1 && g.tent < 4) t.push(['鞭', 'Mastigo', .15 + g.tent * .04]);
+  if (!V && g.limbs >= 1 && g.limbs < 3) t.push(['足', 'Podo', .2 + g.limbs * .05]);
+  if (!V && g.radial > .45 && g.radial <= .62) t.push(['星', 'Astro', g.radial * .4]);
   const tc = -30 + g.tOpt * 140;
   if (tc > 55) t.push(['嗜熱', 'Pyro', .4 + (tc - 55) / 100]);
   else if (tc < 0) t.push(['冰原', 'Cryo', .4 - tc / 100]);
   if (g.pTol > .62 && g.armor < .3) t.push(['膠質', 'Hyalo', g.pTol]);
-  if (g.dry > .6) t.push(['旱生', 'Xero', g.dry]);
+  if (g.dry > .6 && !(g.spine > .5)) t.push(['旱生', 'Xero', g.dry]);
+  if (g.spine > .5 && g.jaw > .5 && g.d > .78 && g.size > .35) t.push(['利齒', 'Odonto', .9]);
+  if (g.spine > .5 && g.speed > .55) t.push(['疾', 'Tachy', g.speed]);
   if (g.shield > .5) t.push(['黑殼', 'Melano', g.shield + .1]);
   if (g.dorm > .55) t.push(['隱生', 'Cryptobio', g.dorm]);
   if (g.sail > .4) t.push(['帆', 'Histio', g.sail + .25]);
@@ -207,6 +220,24 @@ function traitList(g) {
 }
 function nounOf(g) {
   const aq = S.scene.aquatic;
+  if (g.spine > .5) {
+    const legs = g.limbs >= 2;
+    if (aq) {
+      if (g.jaw < .5) return g.armor > .4 ? ['甲冑魚', 'ostracodermus'] : ['無頜魚', 'agnathus'];
+      if (g.limbs >= 1) return ['肉鰭魚', 'sarcopterygius'];
+      if (g.glow > .4 && g.eyeN > 0) return ['燈籠魚', 'lychnichthys'];
+      if (g.segs >= 7) return ['鰻', 'anguilla'];
+      if (g.d > .78 && g.size > .4) return ['鯊', 'selache'];
+      if (g.armor > .45) return ['盾鱗魚', 'placodermus'];
+      return ['魚', 'ichthys'];
+    }
+    if (!legs) return ['蚓螈', 'caecilia'];
+    if (g.eyeN === 0 && S.scene.key === 'cave') return ['洞螈', 'proteus'];
+    if (g.d > .78 && g.size > .45) return ['迷齒獸', 'labyrinthodon'];
+    if (g.segs <= 3) return ['蛙', 'rana'];
+    if (g.armor > .45) return ['甲螈', 'loricosaurus'];
+    return ['蠑螈', 'salamandra'];
+  }
   if (g.sail > .55) return g.d < .45 ? ['星帆', 'velella'] : ['帆獸', 'histiotherium'];
   if (g.dorm > .5 && g.limbs >= 2 && g.d > .45 && g.size < .45) return ['熊蟲', 'tardigrada'];
   if (g.radial > .62 && g.segs <= 3) {
@@ -316,8 +347,8 @@ function step() {
   }
   const env = S.env, f = env.o2, P = env.press, G = env.grav, aq = S.scene.aquatic;
   const births = [];
-  let nAuto = 0, nHet = 0;
-  for (const a of A) if (!a.dead) { if (a.g.d < .45) nAuto++; else nHet++; }
+  let nAuto = 0, nHet = 0, nPred = 0;
+  for (const a of A) if (!a.dead) { if (a.g.d < .45) nAuto++; else if (a.g.d < .72) nHet++; else nPred++; }
 
   for (const a of A) {
     if (a.dead) continue;
@@ -338,15 +369,15 @@ function step() {
     const r = a.r;
     // metabolic costs
     let cost = .03
-      + r * r * .0016 * (1.35 - f) * (.4 + .6 * G)
-      + g.speed * g.speed * .12 * (r / 6)
+      + r * r * .0016 * (1.35 - f) * (.4 + .6 * G) * (1 - .35 * g.spine)
+      + g.speed * g.speed * .12 * (r / 6) * (1 - .5 * g.spine)
       + g.armor * .05 * (r / 6) * (1 + P * (1 - g.pTol) * 2)
       + g.spikes * .03 + g.eyeN * g.eyeSize * .012 + g.glow * .04
-      + g.limbs * .012 + g.tent * .008 + (g.segs - 1) * .006
+      + g.limbs * .012 * (1 - .5 * g.spine) + g.tent * .008 + (g.segs - 1) * .006
       + g.tW * .03 + g.dry * .025 * Wv + Math.max(0, g.pTol - P) * .06;
     const tOptC = -30 + g.tOpt * 140, dev = Math.max(0, Math.abs(T - tOptC) - (6 + g.tW * 30));
     if (g.dorm > .15 && (dev > 16 || (Wv < .08 && g.dry < .6) || a.e < 4) && rnd() < g.dorm * .15) { a.dorm = true; continue; }
-    cost += g.dorm * .015 + g.shield * .02 + g.sail * (.02 + G * .08) + Rd * (1 - g.shield) * .15;
+    cost += g.spine * .018 + g.jaw * .012 + g.dorm * .015 + g.shield * .02 + g.sail * (.02 + G * .08) + Rd * (1 - g.shield) * .15;
     cost += dev * .014;
     cost += Math.max(0, P - g.pTol) * .25 * (.5 + g.armor + g.size * .5);
     cost += (1 - Wv) * (1 - g.dry) * .3;
@@ -362,10 +393,10 @@ function step() {
 
     // senses
     const eatEff = ss(.12, .55, g.d);
-    const loco = aq ? 1 + g.tent * .03 : .55 + Math.min(g.limbs, 4) * .22 * (.3 + .7 * G);
+    const loco = (aq ? 1 + g.tent * .03 + g.spine * .45 : (g.spine > .5 && g.limbs < 2 ? .32 : .55) + Math.min(g.limbs, 4) * .22 * (.3 + .7 * G) * (1 + g.spine * 1.2) + (g.spine > .5 && Wv > .3 ? .2 : 0));
     const v = (.12 + g.speed * 2) * loco * (.6 + .5 * f) + g.sail * L * 1.0;
     const vis = g.eyeN > 0 ? (25 + g.eyeSize * 90 + g.eyeN * 6) * Math.min(1, (L + g.glow * .6) * 2.2) : 0;
-    const nonvis = 26 + g.tent * 6 + g.limbs * 3 + r + (eatEff > .1 ? g.glow * 60 * (1 - Math.min(1, L * 2)) : 0);
+    const nonvis = 26 + g.tent * 6 + g.limbs * 3 + g.spine * 22 + r + (eatEff > .1 ? g.glow * 60 * (1 - Math.min(1, L * 2)) : 0);
     const sense = eatEff > .12 ? Math.max(vis, nonvis) : (vis > 0 ? vis * .8 : 0);
     let tgt = null, td = 1e9, thr = null, thd = 1e9;
     const rescan = ((a.id + S.tick) % 3 === 0) || !a.tgt || a.tgt.dead;
@@ -400,11 +431,11 @@ function step() {
       const reach = a.r + tgt.r * .6 + g.tent * 1.4;
       if (td < reach * reach && a.cd === 0) {
         a.cd = 6;
-        const pr = clamp(.85 - tgt.g.armor * .55 - tgt.g.spikes * .3 + (a.r - tgt.r) * .02, .05, .95);
+        const pr = clamp(.85 + g.jaw * .12 - tgt.g.armor * (.55 - g.jaw * .2) - tgt.g.spikes * .3 + (a.r - tgt.r) * .02, .05, .97);
         if (rnd() < pr) {
           tgt.dead = true;
           const mult = eatEff * (.5 + .5 * f) * (g.d > .7 ? (tgt.g.d < .4 ? .35 : 1) : (tgt.g.d < .4 ? 1 : .5));
-          const gain = (Math.max(0, tgt.e) * .7 + tgt.r * tgt.r * .6 + 4) * mult;
+          const gain = (Math.max(0, tgt.e) * .7 + tgt.r * tgt.r * .6 + 4) * mult * (1 + g.jaw * .3);
           a.e += gain; a.cd = 8 + Math.min(40, gain * .6);
         } else if (tgt.g.spikes > .2) a.e -= tgt.g.spikes * 6;
       }
@@ -427,20 +458,21 @@ function step() {
 
     // reproduction
     const thrE = 22 + r * r * .8;
-    if (a.e > thrE && (g.d < .45 ? nAuto < S.capA : nHet < S.capH)) {
-      if (g.d < .45) nAuto++; else nHet++;
+    const tier = g.d < .45 ? 0 : g.d < .72 ? 1 : 2;
+    if (a.e > thrE && (tier === 0 ? nAuto < S.capA : tier === 1 ? nHet < S.capH : nPred < S.capP)) {
+      if (tier === 0) nAuto++; else if (tier === 1) nHet++; else nPred++;
       const [g2, macro] = mutate(g);
       a.e *= .45;
       let sp = a.sp;
       const cur = S.species.get(sp);
-      if (gdist(g2, cur.proto) > SPLIT) {
+      if (gdist(g2, cur.proto) > SPLIT || (macro && macro !== '眼點複製')) {
         const ns = newSpecies(g2, sp, a.x, a.y); sp = ns.id;
         if (macro) ns.macro = macro;
       }
       const c = makeAgent(clamp(a.x + gauss() * 4, 3, W - 3), clamp(a.y + gauss() * 4, 3, H - 3), g2, sp, a.e);
       births.push(c);
     }
-    const life = 160 + g.size * 600 + (T < 5 ? 100 : 0);
+    const life = 160 + g.size * 600 + g.spine * 260 + (T < 5 ? 100 : 0);
     if (a.age > life) a.dead = true;
   }
 
@@ -464,7 +496,7 @@ function step() {
   }
 }
 function canEat(a, b) {
-  return (b.sp !== a.sp || a.g.d - b.g.d > .15) && b.r <= a.r * 1.05 + a.g.tent * .6 && (a.g.d > .7 || b.g.d < .5);
+  return (b.sp !== a.sp || a.g.d - b.g.d > .15) && b.r <= a.r * (1.05 + a.g.jaw * .3) + a.g.tent * .6 && (a.g.d > .7 || b.g.d < .5);
 }
 
 const MILES = [
@@ -478,6 +510,9 @@ const MILES = [
   ['radial', g => g.radial > .65 && g.size > .25, '首次出現輻射對稱的大型生物'],
   ['segs', g => g.segs >= 6, '首次出現高度分節的身體'],
   ['blind', g => g.eyeN === 0 && g.d > .6 && g.size > .3, '出現眼睛完全退化的掠食者'],
+  ['vert', g => g.spine > .5, '首批脊椎動物出現：體內長出脊索'],
+  ['jaw', g => g.spine > .5 && g.jaw > .5, '有頜脊椎動物出現，牙齒與下顎改寫了食物鏈'],
+  ['tetra', g => g.spine > .5 && g.limbs >= 2 && !S.scene.aquatic, '四足動物登陸：最早的兩棲類出現'],
   ['dorm', g => g.dorm > .6, '首次出現能長期隱生休眠的生物'],
   ['sail', g => g.sail > .5, '首次出現靠光壓漂移的太陽帆生物'],
   ['melan', g => g.shield > .6 && g.d < .4, '首次出現以黑色素吸收輻射維生的生物']
@@ -516,6 +551,17 @@ function explain(sp) {
   else if (g.eyeN > 0 && g.eyeSize > .65) out.push('眼睛特別大，能在微弱光線下收集更多光子，深海魚也有這種適應。');
   if (g.glow > .45 && g.d > .6 && lowLight) out.push('在黑暗中用生物發光誘使獵物靠近，跟鮟鱇魚頭上的發光誘餌是同一套策略。');
   else if (g.glow > .45) out.push('身上有發光器。');
+  if (g.spine > .5) {
+    const fish = S.scene.aquatic || g.limbs < 2;
+    out.push('體內有一條脊椎。內骨骼讓肌肉有了附著點，大型身體不再昂貴，長距離快速游動也變得省力，這是脊椎動物後來稱霸的本錢。');
+    if (g.jaw < .5) out.push('還沒有下顎，只能用圓形口器吸食或濾食。最早的脊椎動物，例如 4 億多年前的甲冑魚，就是這副模樣。');
+    else out.push('鰓弓的骨頭演化成可開合的下顎，能咬住比自己小不了多少的獵物，捕獵成功率大增。');
+    if (fish && g.limbs >= 1 && S.scene.aquatic) out.push('胸鰭和腹鰭裡長出骨頭和肌肉，成了肉質的鰭，這正是日後四肢的前身，就像腔棘魚和提塔利克魚。');
+    if (!fish) {
+      out.push('肉鰭變成四肢，能撐起身體在地面爬行。皮膚仍要保持濕潤、卵也得產在水裡，所以牠離不開水邊，這就是兩棲類。');
+      if (g.eyeN === 0 && S.scene.key === 'cave') out.push('世代住在無光的洞穴，眼睛退化、皮膚失去色素，跟歐洲洞穴裡的洞螈一模一樣。');
+    } else if (!S.scene.aquatic && g.limbs < 2) out.push('沒有四肢的脊椎動物在陸地上只能像蚯蚓一樣鑽行，就像現生的蚓螈。');
+  }
   if (S.scene.space) {
     if (g.shield > .5 && g.d < .4) out.push('細胞裡堆滿黑色素，不但擋住輻射，還能把輻射能量轉成化學能，就像車諾比反應爐裡長出的黑色真菌。');
     else if (g.shield > .5) out.push('黑色素外殼擋住宇宙射線和紫外線，保護 DNA 不被打碎。');

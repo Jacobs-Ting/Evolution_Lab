@@ -152,6 +152,14 @@ input[type=range]:disabled { opacity: .4; }
       <div id="params"></div>
     </section>
     <section class="panel">
+      <div class="ph"><h2>演化節奏</h2><small>切換場景會保留</small></div>
+      <div class="param">
+        <div class="param-row"><label for="vertRate">脊椎動物突變率</label><output id="vertRateOut"></output></div>
+        <input type="range" id="vertRate" min="0" max="50" step="1" value="10">
+        <div class="hint">調高後更容易長出脊索、下顎和四肢；調到 0 就只會有無脊椎動物</div>
+      </div>
+    </section>
+    <section class="panel">
       <div class="ph"><h2>地質事件</h2><small>效果會逐漸消退</small></div>
       <div class="events" id="events"></div>
     </section>

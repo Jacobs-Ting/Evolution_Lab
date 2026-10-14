@@ -89,6 +89,12 @@ function buildEvents() {
 }
 let flash = 0;
 
+/* ----- vertebrate mutation rate ----- */
+const vr = $('vertRate'), vrOut = $('vertRateOut');
+function syncVR() { vr.style.setProperty('--p', (vr.value / 50 * 100) + '%'); vrOut.textContent = (vr.value / 10).toFixed(1) + '×'; }
+vr.oninput = () => { SIM.vertRate = vr.value / 10; syncVR(); };
+SIM.vertRate = vr.value / 10; syncVR();
+
 /* ----- tools & speed ----- */
 function setTool(t) {
   tool = t; $('toolLook').setAttribute('aria-pressed', t === 'look'); $('toolSow').setAttribute('aria-pressed', t === 'sow');
@@ -260,7 +266,8 @@ function render() {
   const A = SIM.agents, ph0 = frameN * .02;
   for (let i = 0; i < A.length; i++) {
     const a = A[i];
-    ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.g.radial > .62 && a.g.segs <= 3 ? a.ph * .05 : a.ang);
+    ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.g.radial > .62 && a.g.segs <= 3 && !(a.g.spine > .5) ? a.ph * .05 : a.ang);
+    if (a.g.spine > .5 && sc.aquatic && Math.cos(a.ang) < 0) ctx.scale(1, -1);
     drawCreature(ctx, a.g, a.r * 1.2, a.ph, false, a.dorm);
     ctx.restore();
   }
@@ -325,7 +332,7 @@ function drawPortrait(c, sp, ph, pad) {
 }
 
 /* ----- species selection ----- */
-function complexity(g) { return g.segs + g.limbs * 1.5 + g.tent + g.eyeN + g.glow * 5 + g.armor * 3 + g.spikes * 4 + g.size * 6 + g.d * 4 + (g.pTol > .62 && g.armor < .3 ? 2 : 0); }
+function complexity(g) { return (g.spine || 0) * 12 + (g.jaw || 0) * 5 + g.segs + g.limbs * 1.5 + g.tent + g.eyeN + g.glow * 5 + g.armor * 3 + g.spikes * 4 + g.size * 6 + g.d * 4 + (g.pTol > .62 && g.armor < .3 ? 2 : 0); }
 function liveNotable() { return [...SIM.species.values()].filter(s => s.died === null && s.pop > 0 && s.notable); }
 function autoSelect() {
   const L = liveNotable(); if (!L.length) { selId = null; return; }
@@ -350,11 +357,12 @@ function renderCard() {
     `<span>祖先 <b>${par ? par.cn : '原始海洋'}</b></span>`;
   const rows = [
     ['體長', g.size, fmtLen(g.size)], ['食性', g.d, dietLabel(g.d)], ['速度', g.speed, Math.round(g.speed * 100) + '%'],
-    ['眼睛', g.eyeN / 8, g.eyeN + ' 隻'], ['附肢', g.limbs / 5, g.limbs + ' 對'], ['體節', g.segs / 10, g.segs + ' 節'],
+    ['眼睛', g.eyeN / 8, g.eyeN + ' 隻'], ['附肢', g.limbs / 5, g.spine > .5 ? (SIM.scene.aquatic ? (g.limbs ? '肉鰭 ' + g.limbs + ' 對' : '鰭') : g.limbs >= 2 ? '四肢' : '無肢') : g.limbs + ' 對'], ['體節', g.segs / 10, g.segs + ' 節'],
     ['觸手', g.tent / 10, g.tent + ' 條'], ['甲殼', g.armor, Math.round(g.armor * 100) + '%'], ['棘刺', g.spikes, Math.round(g.spikes * 100) + '%'],
     ['發光', g.glow, Math.round(g.glow * 100) + '%'], ['最適溫', g.tOpt, Math.round(-30 + g.tOpt * 140) + '°C'],
     ['耐壓', g.pTol, fmtAtm(g.pTol * 100)], ['耐旱', g.dry, Math.round(g.dry * 100) + '%']
   ];
+  rows.unshift(['脊椎', g.spine, g.spine > .5 ? '有脊椎' : '無'], ['下顎', g.jaw, g.jaw > .5 ? '有頜' : g.spine > .5 ? '無頜' : '—']);
   if (SIM.scene.space || g.dorm > .05 || g.shield > .05 || g.sail > .05) rows.push(
     ['隱生休眠', g.dorm, Math.round(g.dorm * 100) + '%'], ['黑色素', g.shield, Math.round(g.shield * 100) + '%'], ['太陽帆', g.sail, Math.round(g.sail * 100) + '%']);
   if (SIM.scene.space) rows.splice(rows.findIndex(r => r[0] === '耐壓'), 1);
@@ -443,7 +451,7 @@ function startScene(k, demo) {
   document.querySelectorAll('.scene').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === k));
   if (demo) {
     SIM.sprinkleScatter(70);
-    for (let i = 0; i < 900; i++) SIM.step();
+    for (let i = 0; i < 1300; i++) SIM.step();
     $('hint').hidden = true; setTool('look');
   } else { $('hint').hidden = false; setTool('sow'); }
   bgKey = ''; refreshAll(); if (!demo) renderCard();
